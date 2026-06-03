@@ -439,7 +439,7 @@ def test_proxy_filters_response_hop_by_hop_headers(
     assert response.headers.get("x-hop-temp") is None
 
 
-def test_proxy_preserves_compressed_response_body(
+def test_proxy_streams_raw_body_for_content_encoded_response(
     client: TestClient,
     auth_headers: dict,
     monkeypatch,
@@ -450,7 +450,7 @@ def test_proxy_preserves_compressed_response_body(
             assert resolve_internal is True
             return Endpoint(endpoint="10.57.1.91:40109")
 
-    monkeypatch.setattr(lifecycle, "sandbox_service", StubService())
+    monkeypatch.setattr(lifecycle, "sandbox_service", StubService)
 
     decoded_body = b"<html>vnc</html>"
     encoded_body = gzip.compress(decoded_body)
