@@ -1,0 +1,2 @@
+# Allow chart packages to be tracked for Helm repo serving via GitHub Pages
+!*.tgz

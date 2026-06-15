@@ -184,7 +184,7 @@ jobs:
 
       - name: Commit and push updated Helm index
         run: |
-          git add docs/public/helm/
+          git add -f docs/public/helm/
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
