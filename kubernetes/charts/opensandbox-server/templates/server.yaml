@@ -96,9 +96,6 @@ spec:
         - name: main
           image: {{ include "opensandbox-server.serverImage" . }}
           imagePullPolicy: {{ include "opensandbox-server.imagePullPolicy" . }}
-          args:
-            - "--config"
-            - "/etc/opensandbox/config.toml"
           ports:
             - name: http
               containerPort: 80
