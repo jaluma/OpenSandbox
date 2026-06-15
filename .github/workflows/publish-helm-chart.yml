@@ -195,3 +195,8 @@ jobs:
             git commit -m "chore(helm): publish ${{ steps.parse_tag.outputs.component }} chart v${{ steps.chart_version.outputs.version }} (app v${{ steps.parse_tag.outputs.app_version }})"
             git push origin HEAD:main
           fi
+
+      - name: Trigger GitHub Pages deployment
+        run: gh workflow run deploy-docs-pages.yml --repo ${{ github.repository }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
