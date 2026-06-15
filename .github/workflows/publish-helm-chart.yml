@@ -174,11 +174,7 @@ jobs:
           mkdir -p docs/public/helm
           cp ${{ steps.parse_tag.outputs.component }}-${{ steps.chart_version.outputs.version }}.tgz docs/public/helm/
 
-          if [ -f docs/public/CNAME ]; then
-            PAGES_URL="https://$(cat docs/public/CNAME)/helm"
-          else
-            PAGES_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/helm"
-          fi
+          PAGES_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/helm"
 
           if [ -f docs/public/helm/index.yaml ]; then
             helm repo index docs/public/helm --url "$PAGES_URL" --merge docs/public/helm/index.yaml
