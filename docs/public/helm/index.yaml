@@ -13,8 +13,50 @@ entries:
           url: https://github.com/alibaba/OpenSandbox/issues
       artifacthub.io/prerelease: "false"
     apiVersion: v2
+    appVersion: 0.2.1
+    created: "2026-06-15T12:03:56.967302807Z"
+    dependencies:
+    - name: opensandbox-controller
+      repository: file://../opensandbox-controller
+      version: 0.2.0
+    - name: opensandbox-server
+      repository: file://../opensandbox-server
+      version: 0.1.0
+    description: All-in-one Helm chart for deploying OpenSandbox controller and server
+    digest: 77010e8e83cd21397a1c19df61da24dbfca5f921a60ed23873100b70d1394326
+    home: https://github.com/alibaba/OpenSandbox
+    keywords:
+    - sandbox
+    - kubernetes
+    - operator
+    - api
+    - lifecycle
+    - batchsandbox
+    kubeVersion: '>=1.21.1-0'
+    maintainers:
+    - email: opensandbox@example.com
+      name: OpenSandbox Team
+    name: opensandbox
+    sources:
+    - https://github.com/alibaba/OpenSandbox/tree/main/kubernetes
+    type: application
+    urls:
+    - https://jaluma.github.io/OpenSandbox/helm/opensandbox-0.2.1.tgz
+    version: 0.2.1
+  - annotations:
+      artifacthub.io/category: integration-delivery
+      artifacthub.io/license: Apache-2.0
+      artifacthub.io/links: |
+        - name: Helm Repository
+          url: https://jaluma.github.io/OpenSandbox/helm
+        - name: Documentation
+          url: https://github.com/alibaba/OpenSandbox/blob/main/kubernetes/README.md
+        - name: Support
+          url: https://github.com/alibaba/OpenSandbox/issues
+      artifacthub.io/prerelease: "false"
+    apiVersion: v2
     appVersion: 0.2.0
-    created: "2026-06-15T18:03:35.953054+08:00"
+    created: "2026-06-15T12:03:56.964982543Z"
     dependencies:
     - name: opensandbox-controller
       repository: file://../opensandbox-controller
@@ -43,4 +85,4 @@ entries:
     urls:
     - https://jaluma.github.io/OpenSandbox/helm/opensandbox-0.2.0.tgz
     version: 0.2.0
-generated: "2026-06-15T18:03:35.951646+08:00"
+generated: "2026-06-15T12:03:56.963397992Z"
