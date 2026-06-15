@@ -130,37 +130,36 @@ jobs:
           name: Helm Chart ${{ steps.parse_tag.outputs.component }} ${{ steps.chart_version.outputs.version }} (App v${{ steps.parse_tag.outputs.app_version }})
           body: |
             ## ${{ steps.parse_tag.outputs.component }} Helm Chart
-            
+
             **Chart Version:** ${{ steps.chart_version.outputs.version }}
             **App Version:** ${{ steps.parse_tag.outputs.app_version }}
-            
+
             ### Installation
-            
-            直接从 GitHub Release 安装:
-            
+
+            Add the Helm repository and install:
+
+            ```bash
+            helm repo add opensandbox https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/helm
+            helm repo update
+            helm install ${{ steps.parse_tag.outputs.component }} opensandbox/${{ steps.parse_tag.outputs.component }} \
+              --version ${{ steps.chart_version.outputs.version }} \
+              --namespace opensandbox-system \
+              --create-namespace
+            ```
+
+            Or install directly from GitHub Release:
+
             ```bash
             helm install ${{ steps.parse_tag.outputs.component }} \
               https://github.com/${{ github.repository }}/releases/download/helm/${{ steps.parse_tag.outputs.component }}/${{ steps.parse_tag.outputs.app_version }}/${{ steps.parse_tag.outputs.component }}-${{ steps.chart_version.outputs.version }}.tgz \
               --namespace opensandbox-system \
               --create-namespace
             ```
-            
-            或者先下载后安装:
-            
-            ```bash
-            # 下载
-            wget https://github.com/${{ github.repository }}/releases/download/helm/${{ steps.parse_tag.outputs.component }}/${{ steps.parse_tag.outputs.app_version }}/${{ steps.parse_tag.outputs.component }}-${{ steps.chart_version.outputs.version }}.tgz
-            
-            # 安装
-            helm install ${{ steps.parse_tag.outputs.component }} ./${{ steps.parse_tag.outputs.component }}-${{ steps.chart_version.outputs.version }}.tgz \
-              --namespace opensandbox-system \
-              --create-namespace
-            ```
-            
+
             ${{ steps.parse_tag.outputs.component == 'opensandbox' && '**Note**: This is an all-in-one chart that bundles controller and server. The packaged chart already includes all dependencies, no need to run `helm dependency build` when installing from release.' || '' }}
-            
+
             ### What's Changed
-            
+
             - Chart version: ${{ steps.chart_version.outputs.version }}
             - App version: ${{ steps.parse_tag.outputs.app_version }}
           files: |
@@ -169,3 +168,30 @@ jobs:
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish chart to Helm repo (GitHub Pages)
+        run: |
+          mkdir -p docs/public/helm
+          cp ${{ steps.parse_tag.outputs.component }}-${{ steps.chart_version.outputs.version }}.tgz docs/public/helm/
+
+          if [ -f docs/public/CNAME ]; then
+            PAGES_URL="https://$(cat docs/public/CNAME)/helm"
+          else
+            PAGES_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/helm"
+          fi
+
+          if [ -f docs/public/helm/index.yaml ]; then
+            helm repo index docs/public/helm --url "$PAGES_URL" --merge docs/public/helm/index.yaml
+          else
+            helm repo index docs/public/helm --url "$PAGES_URL"
+          fi
+
+      - name: Commit and push updated Helm index
+        run: |
+          git add docs/public/helm/
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "chore(helm): publish ${{ steps.parse_tag.outputs.component }} chart v${{ steps.chart_version.outputs.version }} (app v${{ steps.parse_tag.outputs.app_version }})"
+            git push origin HEAD:main
+          fi
