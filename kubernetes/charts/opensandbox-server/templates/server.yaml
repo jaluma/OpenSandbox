@@ -57,6 +57,7 @@ subjects:
     name: {{ include "opensandbox-server.serviceAccountName" . }}
     namespace: {{ include "opensandbox-server.namespace" . }}
 ---
+{{- if .Values.configToml }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -69,6 +70,7 @@ data:
 {{ .Values.configToml | indent 4 }}
 {{ include "opensandbox-server.ingressConfigToml" . | indent 4 }}
 ---
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -107,10 +109,12 @@ spec:
             {{- toYaml . | nindent 12 }}
             {{- end }}
           volumeMounts:
+            {{- if .Values.configToml }}
             - name: config
               mountPath: {{ .Values.server.configPath }}
               subPath: config.toml
               readOnly: true
+            {{- end }}
             {{- with .Values.server.volumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -131,9 +135,11 @@ spec:
           resources:
             {{- toYaml .Values.server.resources | nindent 12 }}
       volumes:
+        {{- if .Values.configToml }}
         - name: config
           configMap:
             name: {{ include "opensandbox-server.fullname" . }}-config
+        {{- end }}
         {{- with .Values.server.volumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
