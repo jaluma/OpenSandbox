@@ -102,13 +102,13 @@ spec:
               protocol: TCP
           env:
             - name: SANDBOX_CONFIG_PATH
-              value: "/etc/opensandbox/config.toml"
+              value: {{ .Values.server.configPath | quote }}
             {{- with .Values.server.env }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           volumeMounts:
             - name: config
-              mountPath: /etc/opensandbox/config.toml
+              mountPath: {{ .Values.server.configPath }}
               subPath: config.toml
               readOnly: true
             {{- with .Values.server.volumeMounts }}

@@ -14,6 +14,10 @@ imagePullSecrets: []
 
 # Server configuration
 server:
+  # -- Path inside the container where the config file is mounted.
+  # SANDBOX_CONFIG_PATH is set to this value automatically.
+  configPath: /etc/opensandbox/config.toml
+
   # -- Additional environment variables for the server container.
   env: []
   # - name: OPENSANDBOX_SERVER_API_KEY
