@@ -38,6 +38,8 @@ annotations:
   artifacthub.io/recommendations: |
     - url: https://github.com/kubernetes-sigs/kind
   artifacthub.io/links: |
+    - name: Helm Repository
+      url: https://jaluma.github.io/OpenSandbox/helm
     - name: Documentation
       url: https://github.com/alibaba/OpenSandbox/blob/main/kubernetes/README.md
     - name: Support

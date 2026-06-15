@@ -45,3 +45,10 @@ annotations:
   artifacthub.io/category: integration-delivery
   artifacthub.io/license: Apache-2.0
   artifacthub.io/prerelease: "false"
+  artifacthub.io/links: |
+    - name: Helm Repository
+      url: https://jaluma.github.io/OpenSandbox/helm
+    - name: Documentation
+      url: https://github.com/alibaba/OpenSandbox/blob/main/kubernetes/README.md
+    - name: Support
+      url: https://github.com/alibaba/OpenSandbox/issues
