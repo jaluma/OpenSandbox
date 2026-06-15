@@ -98,6 +98,9 @@ spec:
         - name: main
           image: {{ include "opensandbox-server.serverImage" . }}
           imagePullPolicy: {{ include "opensandbox-server.imagePullPolicy" . }}
+          args:
+            - "--config"
+            - {{ .Values.server.configPath | quote }}
           ports:
             - name: http
               containerPort: 80
