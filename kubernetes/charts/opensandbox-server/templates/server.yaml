@@ -78,6 +78,8 @@ metadata:
   namespace: {{ include "opensandbox-server.namespace" . }}
   labels:
     {{- include "opensandbox-server.labels" . | nindent 4 }}
+  annotations:
+    reloader.stakater.com/auto: "true"
 spec:
   replicas: {{ .Values.server.replicaCount }}
   selector:
