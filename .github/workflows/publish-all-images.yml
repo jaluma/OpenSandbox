@@ -120,8 +120,8 @@ jobs:
           sed -i "s|execd_image = \".*opensandbox/execd:.*\"|execd_image = \"${GHCR_REPO}/execd:v1.0.21\"|" "$SERVER_VALUES"
           sed -i "s|image = \".*opensandbox/egress:.*\"|image = \"${GHCR_REPO}/egress:v1.1.5\"|" "$SERVER_VALUES"
 
-      - name: Build chart dependencies
-        run: helm dependency build kubernetes/charts/opensandbox
+      - name: Update chart dependencies
+        run: helm dependency update kubernetes/charts/opensandbox
 
       - name: Lint chart
         run: helm lint kubernetes/charts/opensandbox
