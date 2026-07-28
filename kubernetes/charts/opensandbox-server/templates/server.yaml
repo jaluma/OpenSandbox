@@ -79,7 +79,7 @@ metadata:
   labels:
     {{- include "opensandbox-server.labels" . | nindent 4 }}
   annotations:
-    reloader.stakater.com/auto: "true"
+    configmap.reloader.stakater.com/reload: {{ include "opensandbox-server.fullname" . }}-config
 spec:
   replicas: {{ .Values.server.replicaCount }}
   selector:

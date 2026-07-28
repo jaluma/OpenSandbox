@@ -1,0 +1,171 @@
+name: Publish All Images and Chart
+
+on:
+  push:
+    tags:
+      - 'release/v*'
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build-image:
+    name: Build and push ${{ matrix.component }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - component: server
+            dockerfile: server/Dockerfile
+            context: server
+          - component: execd
+            dockerfile: components/execd/Dockerfile
+            context: .
+          - component: ingress
+            dockerfile: components/ingress/Dockerfile
+            context: .
+          - component: egress
+            dockerfile: components/egress/Dockerfile
+            context: .
+          - component: controller
+            dockerfile: kubernetes/Dockerfile
+            context: kubernetes
+            build_args: PACKAGE=./cmd/controller
+          - component: task-executor
+            dockerfile: kubernetes/Dockerfile
+            context: kubernetes
+            build_args: "PACKAGE=cmd/task-executor/main.go\nUSERID=0"
+          - component: image-committer
+            dockerfile: kubernetes/Dockerfile.image-committer
+            context: kubernetes
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Parse version from tag
+        id: version
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#release/}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          GHCR_REPO="ghcr.io/${{ github.repository_owner }}/opensandbox"
+          echo "image=${GHCR_REPO}/${{ matrix.component }}:${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /opt/hostedtoolcache
+          sudo apt-get clean
+          sudo rm -rf /var/lib/apt/lists/*
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.version.outputs.image }}
+          build-args: ${{ matrix.build_args }}
+
+  publish-chart:
+    name: Publish Helm chart
+    needs: build-image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: 'latest'
+
+      - name: Parse version from tag
+        id: version
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#release/}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          GHCR_REPO="ghcr.io/${{ github.repository_owner }}/opensandbox"
+          echo "ghcr_repo=${GHCR_REPO}" >> $GITHUB_OUTPUT
+
+      - name: Update chart image references to GHCR
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          GHCR_REPO: ${{ steps.version.outputs.ghcr_repo }}
+        run: |
+          CONTROLLER_VALUES="kubernetes/charts/opensandbox-controller/values.yaml"
+          SERVER_VALUES="kubernetes/charts/opensandbox-server/values.yaml"
+
+          sed -i "s|repository: .*opensandbox/controller|repository: ${GHCR_REPO}/controller|" "$CONTROLLER_VALUES"
+          sed -i "s|imageCommitterImage: .*|imageCommitterImage: \"${GHCR_REPO}/image-committer:${VERSION}\"|" "$CONTROLLER_VALUES"
+
+          sed -i "s|repository: .*opensandbox/server|repository: ${GHCR_REPO}/server|" "$SERVER_VALUES"
+          sed -i "s|repository: .*opensandbox/ingress|repository: ${GHCR_REPO}/ingress|" "$SERVER_VALUES"
+          sed -i "s|tag: \"v[^\"]*\"|tag: \"${VERSION}\"|g" "$SERVER_VALUES"
+
+          sed -i "s|execd_image = \".*opensandbox/execd:.*\"|execd_image = \"${GHCR_REPO}/execd:${VERSION}\"|" "$SERVER_VALUES"
+          sed -i "s|image = \".*opensandbox/egress:.*\"|image = \"${GHCR_REPO}/egress:${VERSION}\"|" "$SERVER_VALUES"
+
+          sed -i "s/^appVersion:.*/appVersion: \"${VERSION}\"/" kubernetes/charts/opensandbox-controller/Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: \"${VERSION}\"/" kubernetes/charts/opensandbox-server/Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: \"${VERSION}\"/" kubernetes/charts/opensandbox/Chart.yaml
+
+      - name: Build chart dependencies
+        run: helm dependency build kubernetes/charts/opensandbox
+
+      - name: Lint chart
+        run: helm lint kubernetes/charts/opensandbox
+
+      - name: Package chart
+        run: helm package kubernetes/charts/opensandbox
+
+      - name: Publish chart to Helm repo (GitHub Pages)
+        run: |
+          mkdir -p docs/public/helm
+          cp opensandbox-*.tgz docs/public/helm/
+          PAGES_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/helm"
+          if [ -f docs/public/helm/index.yaml ]; then
+            helm repo index docs/public/helm --url "$PAGES_URL" --merge docs/public/helm/index.yaml
+          else
+            helm repo index docs/public/helm --url "$PAGES_URL"
+          fi
+
+      - name: Commit and push updated Helm index
+        run: |
+          git add -f docs/public/helm/
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            VERSION="${{ steps.version.outputs.version }}"
+            git commit -m "chore(helm): publish opensandbox chart ${VERSION}"
+            git push origin HEAD:main
+          fi
+
+      - name: Trigger GitHub Pages deployment
+        run: gh workflow run deploy-docs-pages.yml --repo ${{ github.repository }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
