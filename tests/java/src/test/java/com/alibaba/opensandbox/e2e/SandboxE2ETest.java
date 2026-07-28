@@ -224,6 +224,36 @@ public class SandboxE2ETest extends BaseE2ETest {
 
     @Test
     @Order(1)
+    @DisplayName("Sandbox extensions round-trip")
+    @Timeout(value = 2, unit = TimeUnit.MINUTES)
+    void testSandboxExtensionsRoundTrip() {
+        Sandbox extSandbox =
+                Sandbox.builder()
+                        .connectionConfig(sharedConnectionConfig)
+                        .image(getSandboxImage())
+                        .timeout(Duration.ofMinutes(2))
+                        .readyTimeout(Duration.ofSeconds(60))
+                        .metadata(Map.of("tag", "e2e-extensions"))
+                        .extension("opensandbox.extensions.test-key", "test-value")
+                        .extension("opensandbox.extensions.second", "second-value")
+                        .healthCheckPollingInterval(Duration.ofMillis(500))
+                        .build();
+        try {
+            SandboxInfo info = extSandbox.getInfo();
+            assertNotNull(info.getExtensions(), "extensions missing from getInfo");
+            assertEquals("test-value", info.getExtensions().get("opensandbox.extensions.test-key"));
+            assertEquals("second-value", info.getExtensions().get("opensandbox.extensions.second"));
+        } finally {
+            try {
+                extSandbox.kill();
+            } catch (Exception ignored) {
+            }
+            extSandbox.close();
+        }
+    }
+
+    @Test
+    @Order(1)
     @DisplayName("Sandbox manual cleanup returns null expiresAt")
     @Timeout(value = 2, unit = TimeUnit.MINUTES)
     void testSandboxManualCleanup() {
@@ -1380,7 +1410,36 @@ public class SandboxE2ETest extends BaseE2ETest {
         assertEquals(1, multiResults.size());
         assertEquals(3, multiResults.get(0).getReplacedCount());
 
-        sandbox.files().deleteFiles(List.of(testDir1 + "/multi.txt"));
+        // Batch replace across multiple files
+        String batchFileA = testDir1 + "/batch_a.txt";
+        String batchFileB = testDir1 + "/batch_b.txt";
+        sandbox.files().write(List.of(
+                WriteEntry.builder().path(batchFileA).data("hello world").build(),
+                WriteEntry.builder().path(batchFileB).data("hello hello").build()));
+        var batchResults = sandbox.files().replaceContentsDetailed(List.of(
+                ContentReplaceEntry.builder().path(batchFileA).oldContent("hello").newContent("hi").build(),
+                ContentReplaceEntry.builder().path(batchFileB).oldContent("hello").newContent("hi").build()));
+        assertEquals(2, batchResults.size());
+        var resultsByPath = batchResults.stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        ContentReplaceResult::getPath, ContentReplaceResult::getReplacedCount));
+        assertEquals(1, resultsByPath.get(batchFileA));
+        assertEquals(2, resultsByPath.get(batchFileB));
+        assertEquals("hi world", sandbox.files().readFile(batchFileA, "UTF-8", null));
+        assertEquals("hi hi", sandbox.files().readFile(batchFileB, "UTF-8", null));
+
+        // Verify original replaceContents (verbose=false, void return) still works
+        sandbox.files().replaceContents(List.of(
+                ContentReplaceEntry.builder()
+                        .path(testFile1)
+                        .oldContent("Replaced line in file1")
+                        .newContent("Final line in file1")
+                        .build()));
+        String finalContent = sandbox.files().readFile(testFile1, "UTF-8", null);
+        assertTrue(finalContent.contains("Final line in file1"));
+        assertFalse(finalContent.contains("Replaced line in file1"));
+
+        sandbox.files().deleteFiles(List.of(testDir1 + "/multi.txt", batchFileA, batchFileB));
 
         // Move file3
         String movedPath = testDir2 + "/moved_file3.txt";

@@ -61,6 +61,7 @@ const batchSandboxFirstPodIndex = 0
 
 type taskScheduleResult struct {
 	Running, Failed, Succeed, Unknown, Pending int32
+	LastErrorMessage                           string
 }
 
 // BatchSandboxReconciler reconciles a BatchSandbox object
@@ -218,6 +219,9 @@ func (r *BatchSandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			runtimeView.status.TaskSucceed = ts.Succeed
 			runtimeView.status.TaskUnknown = ts.Unknown
 			runtimeView.status.TaskPending = ts.Pending
+			if ts.LastErrorMessage != "" {
+				runtimeView.status.TaskLastErrorMessage = ts.LastErrorMessage
+			}
 		}
 	}
 
@@ -421,6 +425,7 @@ func (r *BatchSandboxReconciler) scheduleTasks(ctx context.Context, tSch tasksch
 	var (
 		running, failed, succeed, unknown int32
 		pending                           int32
+		lastErrorMessage                  string
 	)
 	for i := range len(tasks) {
 		task := tasks[i]
@@ -438,6 +443,10 @@ func (r *BatchSandboxReconciler) scheduleTasks(ctx context.Context, tSch tasksch
 				succeed++
 			case taskscheduler.FailedTaskState:
 				failed++
+				// Capture the most recent error message to surface in status.
+				if msg := task.GetTerminatedMessage(); msg != "" {
+					lastErrorMessage = msg
+				}
 			case taskscheduler.UnknownTaskState:
 				unknown++
 			}
@@ -451,11 +460,12 @@ func (r *BatchSandboxReconciler) scheduleTasks(ctx context.Context, tSch tasksch
 		log.Info("successfully released Pods", "count", len(toReleasedPods))
 	}
 	return &taskScheduleResult{
-		Running: running,
-		Failed:  failed,
-		Succeed: succeed,
-		Unknown: unknown,
-		Pending: pending,
+		Running:          running,
+		Failed:           failed,
+		Succeed:          succeed,
+		Unknown:          unknown,
+		Pending:          pending,
+		LastErrorMessage: lastErrorMessage,
 	}, nil
 }
 
@@ -499,7 +509,14 @@ func (r *BatchSandboxReconciler) releasePods(ctx context.Context, batchSbx *sand
 			Name:      batchSbx.Name,
 		},
 	}
-	return r.Client.Patch(ctx, b, client.RawPatch(types.MergePatchType, []byte(body)))
+	if err := r.Client.Patch(ctx, b, client.RawPatch(types.MergePatchType, []byte(body))); err != nil {
+		r.Recorder.Eventf(batchSbx, corev1.EventTypeWarning, EventReasonFailedRelease, "Failed to release pods: %v", err)
+		return err
+	}
+	if len(toReleasePods) > 0 {
+		r.Recorder.Eventf(batchSbx, corev1.EventTypeNormal, EventReasonPodReleased, "Released %d pod(s) back to pool: %v", len(toReleasePods), toReleasePods)
+	}
+	return nil
 }
 
 // Normal Mode
@@ -563,10 +580,10 @@ func (r *BatchSandboxReconciler) scaleBatchSandbox(ctx context.Context, batchSan
 		BatchSandboxScaleExpectations.ExpectScale(controllerutils.GetControllerKey(batchSandbox), expectations.Create, pod.Name)
 		if err := r.Create(ctx, pod); err != nil {
 			BatchSandboxScaleExpectations.ObserveScale(controllerutils.GetControllerKey(batchSandbox), expectations.Create, pod.Name)
-			r.Recorder.Eventf(batchSandbox, corev1.EventTypeWarning, "FailedCreate", "failed to create pod: %v, pod: %v", err, utils.DumpJSON(pod))
+			r.Recorder.Eventf(batchSandbox, corev1.EventTypeWarning, EventReasonFailedCreate, "failed to create pod: %v, pod: %v", err, utils.DumpJSON(pod))
 			return err
 		}
-		r.Recorder.Eventf(batchSandbox, corev1.EventTypeNormal, "SuccessfulCreate", "succeed to create pod %s", pod.Name)
+		r.Recorder.Eventf(batchSandbox, corev1.EventTypeNormal, EventReasonSuccessfulCreate, "succeed to create pod %s", pod.Name)
 	}
 	return nil
 }
@@ -603,6 +620,7 @@ func (r *BatchSandboxReconciler) assignPool(ctx context.Context, batchSbx *sandb
 
 	poolName, err := assigner.AssignPool(ctx, batchSbx, pools)
 	if err != nil {
+		r.Recorder.Eventf(batchSbx, corev1.EventTypeWarning, EventReasonFailedPoolAssign, "Failed to assign pool: %v", err)
 		return false, err
 	}
 
@@ -614,6 +632,7 @@ func (r *BatchSandboxReconciler) assignPool(ctx context.Context, batchSbx *sandb
 	}
 
 	log.Info("auto-assigned pool", "pool", poolName)
+	r.Recorder.Eventf(batchSbx, corev1.EventTypeNormal, EventReasonPoolAssigned, "Assigned to pool %s", poolName)
 	return true, nil
 }
 

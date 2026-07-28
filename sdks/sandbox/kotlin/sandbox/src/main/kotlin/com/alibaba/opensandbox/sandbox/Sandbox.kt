@@ -41,9 +41,11 @@ import com.alibaba.opensandbox.sandbox.domain.services.Diagnostics
 import com.alibaba.opensandbox.sandbox.domain.services.Egress
 import com.alibaba.opensandbox.sandbox.domain.services.Filesystem
 import com.alibaba.opensandbox.sandbox.domain.services.Health
+import com.alibaba.opensandbox.sandbox.domain.services.IsolationService
 import com.alibaba.opensandbox.sandbox.domain.services.Metrics
 import com.alibaba.opensandbox.sandbox.domain.services.Sandboxes
 import com.alibaba.opensandbox.sandbox.infrastructure.factory.AdapterFactory
+import com.alibaba.opensandbox.sandbox.internal.LifecycleMetricsReporter
 import org.slf4j.LoggerFactory
 import java.time.Duration
 import java.time.OffsetDateTime
@@ -94,6 +96,7 @@ class Sandbox internal constructor(
     private val metricsService: Metrics,
     private val egressService: Egress,
     private val credentialVaultService: CredentialVault,
+    private val isolatedService: IsolationService,
     private val customHealthCheck: ((sandbox: Sandbox) -> Boolean)? = null,
     private val httpClientProvider: HttpClientProvider,
     private val diagnosticsService: Diagnostics,
@@ -141,6 +144,8 @@ class Sandbox internal constructor(
      * @return Service for sandbox diagnostics retrieval
      */
     fun diagnostics() = diagnosticsService
+
+    fun isolation() = isolatedService
 
     /**
      * Provides access to shared httpclient provider
@@ -235,6 +240,7 @@ class Sandbox internal constructor(
                     )
                 val egressStack = factory.createEgressStack(egressEndpoint)
                 val diagnosticsService = factory.createDiagnostics()
+                val isolatedService = factory.createIsolatedSessions(execdEndpoint)
 
                 val sandbox =
                     Sandbox(
@@ -246,6 +252,7 @@ class Sandbox internal constructor(
                         healthService = healthService,
                         egressService = egressStack.egress,
                         credentialVaultService = egressStack.credentialVault,
+                        isolatedService = isolatedService,
                         customHealthCheck = healthCheck,
                         httpClientProvider = httpClientProvider,
                         diagnosticsService = diagnosticsService,
@@ -331,34 +338,65 @@ class Sandbox internal constructor(
             extensions: Map<String, String>,
             skipHealthCheck: Boolean,
             volumes: List<Volume>?,
+            resourceRequests: Map<String, String>? = null,
         ): Sandbox {
             val timeoutLabel = if (timeout != null) "${timeout.seconds}s" else "manual-cleanup"
-            return initializeSandbox(
-                operationName = "create sandbox with startup source ${imageSpec?.image ?: snapshotId} (timeout: $timeoutLabel)",
-                connectionConfig = connectionConfig,
-                healthCheck = healthCheck,
-                timeout = readyTimeout,
-                healthCheckPollingInterval = healthCheckPollingInterval,
-                skipHealthCheck = skipHealthCheck,
-            ) { sandboxService ->
-                val response =
-                    sandboxService.createSandbox(
-                        spec = imageSpec,
-                        entrypoint = entrypoint,
-                        env = env,
-                        metadata = metadata,
-                        timeout = timeout,
-                        resource = resource,
-                        networkPolicy = networkPolicy,
-                        credentialProxy = credentialProxy,
-                        extensions = extensions,
-                        volumes = volumes,
-                        platform = platform,
-                        secureAccess = secureAccess,
-                        snapshotId = snapshotId,
-                    )
-                InitializationResult.NewSandbox(response.id)
+            val startupSource = imageSpec?.image ?: snapshotId
+            val started = System.nanoTime()
+            var createdSandboxId: String? = null
+            try {
+                val sandbox =
+                    initializeSandbox(
+                        operationName = "create sandbox with startup source $startupSource (timeout: $timeoutLabel)",
+                        connectionConfig = connectionConfig,
+                        healthCheck = healthCheck,
+                        timeout = readyTimeout,
+                        healthCheckPollingInterval = healthCheckPollingInterval,
+                        skipHealthCheck = skipHealthCheck,
+                    ) { sandboxService ->
+                        val response =
+                            sandboxService.createSandbox(
+                                spec = imageSpec,
+                                entrypoint = entrypoint,
+                                env = env,
+                                metadata = metadata,
+                                timeout = timeout,
+                                resource = resource,
+                                networkPolicy = networkPolicy,
+                                credentialProxy = credentialProxy,
+                                extensions = extensions,
+                                volumes = volumes,
+                                platform = platform,
+                                secureAccess = secureAccess,
+                                snapshotId = snapshotId,
+                                resourceRequests = resourceRequests,
+                            )
+                        createdSandboxId = response.id
+                        InitializationResult.NewSandbox(response.id)
+                    }
+                LifecycleMetricsReporter.reportSandboxCreate(
+                    connectionConfig = connectionConfig,
+                    sandboxId = sandbox.id,
+                    image = startupSource,
+                    createDurationMs = elapsedMillis(started),
+                    success = true,
+                )
+                return sandbox
+            } catch (e: Throwable) {
+                LifecycleMetricsReporter.reportSandboxCreate(
+                    connectionConfig = connectionConfig,
+                    sandboxId = createdSandboxId,
+                    image = startupSource,
+                    createDurationMs = elapsedMillis(started),
+                    success = false,
+                )
+                throw e
             }
+        }
+
+        private fun elapsedMillis(startNanos: Long): Long {
+            val elapsed = (System.nanoTime() - startNanos) / 1_000_000L
+            return if (elapsed < 0L) 0L else elapsed
         }
 
         /**
@@ -566,6 +604,7 @@ class Sandbox internal constructor(
      */
     fun pause() {
         logger.info("Pausing sandbox: {}", id)
+        sandboxService.invalidateEndpointCache(id)
         sandboxService.pauseSandbox(id)
     }
 
@@ -579,6 +618,7 @@ class Sandbox internal constructor(
      * @throws SandboxException if termination fails
      */
     fun kill() {
+        sandboxService.invalidateEndpointCache(id)
         sandboxService.killSandbox(id)
     }
 
@@ -892,6 +932,11 @@ class Sandbox internal constructor(
         private val resource = mutableMapOf("cpu" to "1", "memory" to "2Gi")
 
         /**
+         * Resource requests (guaranteed minimums) for Burstable QoS.
+         */
+        private var resourceRequests: MutableMap<String, String>? = null
+
+        /**
          * Env
          */
         private val env = mutableMapOf<String, String>()
@@ -1038,6 +1083,30 @@ class Sandbox internal constructor(
         fun resource(resource: Map<String, String>): Builder {
             this.resource.clear()
             this.resource.putAll(resource)
+            return this
+        }
+
+        /**
+         * Sets resource requests (guaranteed minimums) for Burstable QoS.
+         *
+         * @param resourceRequests Resource requests map
+         * @return This builder for method chaining
+         */
+        fun resourceRequests(resourceRequests: Map<String, String>): Builder {
+            this.resourceRequests = resourceRequests.toMutableMap()
+            return this
+        }
+
+        /**
+         * Sets resource requests using a fluent configuration block.
+         *
+         * @param configure Configuration block for resource requests
+         * @return This builder for method chaining
+         */
+        fun resourceRequests(configure: MutableMap<String, String>.() -> Unit): Builder {
+            val requests = this.resourceRequests ?: mutableMapOf()
+            requests.configure()
+            this.resourceRequests = requests
             return this
         }
 
@@ -1399,6 +1468,7 @@ class Sandbox internal constructor(
                 healthCheck = healthCheck,
                 skipHealthCheck = skipHealthCheck,
                 volumes = if (volumes.isEmpty()) null else volumes.toList(),
+                resourceRequests = resourceRequests,
             )
         }
     }

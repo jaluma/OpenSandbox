@@ -15,10 +15,12 @@
 using OpenSandbox.Config;
 using OpenSandbox.Core;
 using OpenSandbox.Factory;
+using OpenSandbox.Internal;
 using OpenSandbox.Models;
 using OpenSandbox.Services;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using System.Diagnostics;
 using System.Text.RegularExpressions;
 
 namespace OpenSandbox;
@@ -64,6 +66,8 @@ public sealed class Sandbox : IAsyncDisposable
     /// </summary>
     public IExecdMetrics Metrics { get; }
 
+    public IIsolatedSessions Isolation { get; }
+
     /// <summary>
     /// Gets the sandbox-scoped Credential Vault service.
     /// </summary>
@@ -96,6 +100,7 @@ public sealed class Sandbox : IAsyncDisposable
         ISandboxFiles files,
         IExecdHealth health,
         IExecdMetrics metrics,
+        IIsolatedSessions isolated,
         IEgress egress,
         ICredentialVault? credentialVault)
     {
@@ -112,6 +117,7 @@ public sealed class Sandbox : IAsyncDisposable
         Files = files;
         Health = health;
         Metrics = metrics;
+        Isolation = isolated;
         _egress = egress;
         CredentialVault = credentialVault
             ?? egress as ICredentialVault
@@ -146,12 +152,14 @@ public sealed class Sandbox : IAsyncDisposable
             throw new InvalidArgumentException("Entrypoint must be omitted when SnapshotId is provided.");
         }
         ValidateHostPaths(options.Volumes);
+        var startupSource = options.Image ?? options.SnapshotId;
+        var createStopwatch = Stopwatch.StartNew();
         var httpClientProvider = new HttpClientProvider(connectionConfig, loggerFactory);
 
         ISandboxes sandboxes;
         logger.LogInformation(
             "Creating sandbox (startupSource={StartupSource}, useServerProxy={UseServerProxy})",
-            options.Image ?? options.SnapshotId,
+            startupSource,
             connectionConfig.UseServerProxy);
         try
         {
@@ -167,6 +175,13 @@ public sealed class Sandbox : IAsyncDisposable
         catch
         {
             logger.LogError("Failed to initialize lifecycle adapters while creating sandbox");
+            LifecycleMetricsReporter.ReportSandboxCreate(
+                connectionConfig,
+                sandboxId: null,
+                image: startupSource,
+                createDurationMs: createStopwatch.ElapsedMilliseconds,
+                success: false,
+                loggerFactory);
             httpClientProvider.Dispose();
             throw;
         }
@@ -186,6 +201,7 @@ public sealed class Sandbox : IAsyncDisposable
                 : null,
             Timeout = options.ManualCleanup ? null : options.TimeoutSeconds ?? Constants.DefaultTimeoutSeconds,
             ResourceLimits = options.Resource ?? Constants.DefaultResourceLimits,
+            ResourceRequests = options.ResourceRequests,
             Env = options.Env,
             SecureAccess = options.SecureAccess,
             Metadata = options.Metadata,
@@ -255,6 +271,7 @@ public sealed class Sandbox : IAsyncDisposable
                 execdStack.Files,
                 execdStack.Health,
                 execdStack.Metrics,
+                execdStack.Isolation,
                 egressStack.Egress,
                 egressStack.CredentialVault);
 
@@ -268,6 +285,14 @@ public sealed class Sandbox : IAsyncDisposable
                     HealthCheck = options.HealthCheck
                 }, cancellationToken).ConfigureAwait(false);
             }
+
+            LifecycleMetricsReporter.ReportSandboxCreate(
+                connectionConfig,
+                sandboxId: sandboxId,
+                image: startupSource,
+                createDurationMs: createStopwatch.ElapsedMilliseconds,
+                success: true,
+                loggerFactory);
 
             return sandbox;
         }
@@ -284,6 +309,14 @@ public sealed class Sandbox : IAsyncDisposable
                     // Ignore cleanup failure; surface original error
                 }
             }
+
+            LifecycleMetricsReporter.ReportSandboxCreate(
+                connectionConfig,
+                sandboxId: sandboxId,
+                image: startupSource,
+                createDurationMs: createStopwatch.ElapsedMilliseconds,
+                success: false,
+                loggerFactory);
 
             httpClientProvider.Dispose();
             logger.LogError(ex, "Sandbox create flow failed");
@@ -380,6 +413,7 @@ public sealed class Sandbox : IAsyncDisposable
                 execdStack.Files,
                 execdStack.Health,
                 execdStack.Metrics,
+                execdStack.Isolation,
                 egressStack.Egress,
                 egressStack.CredentialVault);
 
@@ -505,6 +539,7 @@ public sealed class Sandbox : IAsyncDisposable
     /// <exception cref="SandboxApiException">Thrown when the sandbox API returns an error.</exception>
     public Task PauseAsync(CancellationToken cancellationToken = default)
     {
+        (_sandboxes as Adapters.SandboxesAdapter)?.InvalidateEndpointCache(Id);
         return _sandboxes.PauseSandboxAsync(Id, cancellationToken);
     }
 
@@ -545,6 +580,7 @@ public sealed class Sandbox : IAsyncDisposable
     /// <exception cref="SandboxApiException">Thrown when the sandbox API returns an error.</exception>
     public Task KillAsync(CancellationToken cancellationToken = default)
     {
+        (_sandboxes as Adapters.SandboxesAdapter)?.InvalidateEndpointCache(Id);
         return _sandboxes.DeleteSandboxAsync(Id, cancellationToken);
     }
 

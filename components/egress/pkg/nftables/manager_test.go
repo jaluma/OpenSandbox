@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"net/netip"
+	"strings"
 	"testing"
 	"time"
 
@@ -56,7 +57,52 @@ func TestApplyStatic_BuildsRuleset_DefaultDeny(t *testing.T) {
 	expectContains(t, rendered, "add element inet opensandbox deny_v6 { 2001:db8::/32 }")
 	expectContains(t, rendered, "add rule inet opensandbox egress ip daddr @dyn_allow_v4 accept")
 	expectContains(t, rendered, "add rule inet opensandbox egress ip6 daddr @dyn_allow_v6 accept")
-	expectContains(t, rendered, "add rule inet opensandbox egress counter drop")
+	expectContains(t, rendered, "add rule inet opensandbox egress drop")
+}
+
+func TestApplyStatic_DefaultDenyFallbackRuleUsesPlainDrop(t *testing.T) {
+	var rendered string
+	m := NewManagerWithRunner(func(_ context.Context, script string) ([]byte, error) {
+		rendered = script
+		return nil, nil
+	})
+
+	p, err := policy.ParsePolicy(`{"defaultAction":"deny","egress":[]}`)
+	require.NoError(t, err)
+	require.NoError(t, m.ApplyStatic(context.Background(), p))
+
+	expectContains(t, rendered, "add chain inet opensandbox egress { type filter hook output priority 0; policy drop; }")
+	expectContains(t, rendered, "add rule inet opensandbox egress drop")
+	require.NotContains(t, rendered, "counter drop", "counter expression is not supported in the QA pod netns")
+}
+
+func TestApplyStatic_AllowsRedirectedDNSBeforeAlwaysDeny(t *testing.T) {
+	var rendered string
+	m := NewManagerWithRunner(func(_ context.Context, script string) ([]byte, error) {
+		rendered = script
+		return nil, nil
+	})
+
+	p, err := policy.ParsePolicy(`{"defaultAction":"deny","egress":[]}`)
+	require.NoError(t, err)
+	denyLoopback, err := policy.ParseValidatedEgressRule(policy.ActionDeny, "127.0.0.0/8")
+	require.NoError(t, err)
+	merged := policy.MergeAlwaysOverlay(p, []policy.EgressRule{denyLoopback}, nil)
+	policyWithDNS := merged.WithExtraAllowIPs([]netip.Addr{netip.MustParseAddr("127.0.0.1")})
+
+	require.NoError(t, m.ApplyStatic(context.Background(), policyWithDNS))
+
+	denyRule := "add rule inet opensandbox egress ip daddr @deny_v4 drop"
+	denyRuleIndex := strings.Index(rendered, denyRule)
+	require.NotEqual(t, -1, denyRuleIndex, "expected rendered ruleset to contain %q", denyRule)
+	for _, dnsRule := range []string{
+		"add rule inet opensandbox egress ip daddr 127.0.0.1 udp dport 15353 accept",
+		"add rule inet opensandbox egress ip daddr 127.0.0.1 tcp dport 15353 accept",
+	} {
+		dnsRuleIndex := strings.Index(rendered, dnsRule)
+		require.NotEqual(t, -1, dnsRuleIndex, "expected rendered ruleset to contain %q", dnsRule)
+		require.Less(t, dnsRuleIndex, denyRuleIndex, "expected %q before %q", dnsRule, denyRule)
+	}
 }
 
 func TestApplyStatic_DefaultAllowUsesAcceptPolicy(t *testing.T) {
@@ -76,7 +122,7 @@ func TestApplyStatic_DefaultAllowUsesAcceptPolicy(t *testing.T) {
 
 	expectContains(t, rendered, "policy accept;")
 	expectContains(t, rendered, "add rule inet opensandbox egress tcp dport 853 drop")
-	require.NotContains(t, rendered, "counter drop", "did not expect drop counter when defaultAction is allow:\n%s", rendered)
+	require.NotContains(t, rendered, " egress drop", "did not expect final drop rule when defaultAction is allow:\n%s", rendered)
 	expectContains(t, rendered, "add element inet opensandbox deny_v4 { 10.0.0.0/8 }")
 }
 

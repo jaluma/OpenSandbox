@@ -22,6 +22,7 @@ import {
   DEFAULT_TIMEOUT_SECONDS,
 } from "./core/constants.js";
 import { ConnectionConfig, type ConnectionConfigOptions } from "./config/connection.js";
+import { reportSandboxCreateMetric } from "./internal/lifecycleMetrics.js";
 import type { SandboxFiles } from "./services/filesystem.js";
 import type { CredentialVault, Egress } from "./services/egress.js";
 import { createDefaultAdapterFactory } from "./factory/defaultAdapterFactory.js";
@@ -31,6 +32,9 @@ import type { Sandboxes } from "./services/sandboxes.js";
 import type { ExecdCommands } from "./services/execdCommands.js";
 import type { ExecdHealth } from "./services/execdHealth.js";
 import type { ExecdMetrics } from "./services/execdMetrics.js";
+import type { IsolationService, IsolationSession } from "./services/isolatedSessions.js";
+import type { CommandExecution } from "./models/execd.js";
+import type { IsolatedCapabilities, IsolatedSessionSummary } from "./models/isolated.js";
 import type {
   CreateSandboxRequest,
   CredentialProxyConfig,
@@ -47,6 +51,33 @@ import type {
 import { SandboxReadyTimeoutException } from "./core/exceptions.js";
 
 const HOST_PATH_PATTERN = /^([/]|[A-Za-z]:[\\/])/;
+
+const unavailableIsolation: IsolationService = {
+  create(): Promise<IsolationSession> {
+    throw new Error("Isolation is not available: the adapter factory did not provide an IsolationService");
+  },
+  attach(): Promise<IsolationSession> {
+    throw new Error("Isolation is not available: the adapter factory did not provide an IsolationService");
+  },
+  capabilities(): Promise<IsolatedCapabilities> {
+    return Promise.resolve({
+      available: false,
+      setpriv_available: false,
+      userns_available: false,
+      commit_supported: false,
+      diff_supported: false,
+    });
+  },
+  list(): Promise<IsolatedSessionSummary[]> {
+    throw new Error("Isolation is not available: the adapter factory did not provide an IsolationService");
+  },
+  runOnce(): Promise<CommandExecution> {
+    throw new Error("Isolation is not available: the adapter factory did not provide an IsolationService");
+  },
+  withSession<T>(): Promise<T> {
+    throw new Error("Isolation is not available: the adapter factory did not provide an IsolationService");
+  },
+};
 const CREDENTIAL_VAULT_METHODS = [
   "create",
   "get",
@@ -156,6 +187,12 @@ export interface SandboxCreateOptions {
    */
   resource?: Record<string, string>;
   /**
+   * Resource requests (guaranteed minimums) for the sandbox container.
+   * When set, enables Kubernetes Burstable QoS (requests < limits).
+   * Only meaningful for Kubernetes runtimes.
+   */
+  resourceRequests?: Record<string, string>;
+  /**
    * Sandbox timeout in seconds. Set to `null` to require explicit cleanup.
    */
   timeoutSeconds?: number | null;
@@ -240,6 +277,7 @@ export class Sandbox {
   readonly files: SandboxFiles;
   readonly health: ExecdHealth;
   readonly metrics: ExecdMetrics;
+  readonly isolation: IsolationService;
   /**
    * Sandbox-scoped Credential Vault operations.
    */
@@ -271,6 +309,7 @@ export class Sandbox {
     files: SandboxFiles;
     health: ExecdHealth;
     metrics: ExecdMetrics;
+    isolation: IsolationService;
     egress: Egress;
     credentialVault?: CredentialVault;
   }) {
@@ -294,6 +333,7 @@ export class Sandbox {
     this.files = opts.files;
     this.health = opts.health;
     this.metrics = opts.metrics;
+    this.isolation = opts.isolation;
     this.credentialVault = credentialVault;
   }
 
@@ -359,6 +399,7 @@ export class Sandbox {
       snapshotId: opts.snapshotId,
       entrypoint: opts.entrypoint ?? DEFAULT_ENTRYPOINT,
       resourceLimits: opts.resource ?? DEFAULT_RESOURCE_LIMITS,
+      resourceRequests: opts.resourceRequests,
       secureAccess: opts.secureAccess ?? false,
       env: opts.env ?? {},
       metadata: opts.metadata ?? {},
@@ -378,6 +419,11 @@ export class Sandbox {
     }
 
     let sandboxId: SandboxId | undefined;
+    const startupSource =
+      typeof opts.image === "string"
+        ? opts.image
+        : opts.image?.uri ?? opts.snapshotId;
+    const createStarted = Date.now();
     try {
       const created = await sandboxes.createSandbox(req);
       sandboxId = created.id as SandboxId;
@@ -395,7 +441,7 @@ export class Sandbox {
       const execdBaseUrl = `${connectionConfig.protocol}://${endpoint.endpoint}`;
       const egressBaseUrl = `${connectionConfig.protocol}://${egressEndpoint.endpoint}`;
 
-      const { commands, files, health, metrics } =
+      const execdStack =
         adapterFactory.createExecdStack({
           connectionConfig,
           execdBaseUrl,
@@ -406,6 +452,8 @@ export class Sandbox {
         egressBaseUrl,
         endpointHeaders: egressEndpoint.headers,
       });
+
+      const { commands, files, health, metrics, isolation } = execdStack;
 
       const sbx = new Sandbox({
         id: sandboxId,
@@ -418,6 +466,7 @@ export class Sandbox {
         files,
         health,
         metrics,
+        isolation: isolation ?? unavailableIsolation,
         egress,
         credentialVault,
       });
@@ -433,8 +482,21 @@ export class Sandbox {
         });
       }
 
+      reportSandboxCreateMetric(connectionConfig, {
+        sandboxId,
+        image: startupSource,
+        createDurationMs: Date.now() - createStarted,
+        success: true,
+      });
+
       return sbx;
     } catch (err) {
+      reportSandboxCreateMetric(connectionConfig, {
+        sandboxId,
+        image: startupSource,
+        createDurationMs: Date.now() - createStarted,
+        success: false,
+      });
       if (sandboxId) {
         try {
           await sandboxes.deleteSandbox(sandboxId);
@@ -480,7 +542,7 @@ export class Sandbox {
       );
       const execdBaseUrl = `${connectionConfig.protocol}://${endpoint.endpoint}`;
       const egressBaseUrl = `${connectionConfig.protocol}://${egressEndpoint.endpoint}`;
-      const { commands, files, health, metrics } =
+      const execdStack =
         adapterFactory.createExecdStack({
           connectionConfig,
           execdBaseUrl,
@@ -491,6 +553,8 @@ export class Sandbox {
         egressBaseUrl,
         endpointHeaders: egressEndpoint.headers,
       });
+
+      const { commands, files, health, metrics, isolation } = execdStack;
 
       const sbx = new Sandbox({
         id: opts.sandboxId,
@@ -503,6 +567,7 @@ export class Sandbox {
         files,
         health,
         metrics,
+        isolation: isolation ?? unavailableIsolation,
         egress,
         credentialVault,
       });
@@ -542,6 +607,7 @@ export class Sandbox {
   }
 
   async pause(): Promise<void> {
+    this.sandboxes.invalidateEndpointCache?.(this.id);
     await this.sandboxes.pauseSandbox(this.id);
   }
 
@@ -598,6 +664,7 @@ export class Sandbox {
   }
 
   async kill(): Promise<void> {
+    this.sandboxes.invalidateEndpointCache?.(this.id);
     await this.sandboxes.deleteSandbox(this.id);
   }
 
