@@ -18,6 +18,11 @@ server:
   # SANDBOX_CONFIG_PATH is set to this value automatically.
   configPath: /etc/opensandbox/config.toml
 
+  # -- Additional annotations for the server Deployment (not the pod). Used e.g. to configure
+  # reloader when a custom config ConfigMap is mounted via server.volumes.
+  # Example: { "configmap.reloader.stakater.com/reload": "my-custom-cm" }
+  deploymentAnnotations: {}
+
   # -- Additional environment variables for the server container.
   env: []
   # - name: OPENSANDBOX_SERVER_API_KEY

@@ -78,8 +78,15 @@ metadata:
   namespace: {{ include "opensandbox-server.namespace" . }}
   labels:
     {{- include "opensandbox-server.labels" . | nindent 4 }}
+  {{- $reloaderAnnotation := dict }}
+  {{- if .Values.configToml }}
+  {{- $reloaderAnnotation = dict "configmap.reloader.stakater.com/reload" (printf "%s-config" (include "opensandbox-server.fullname" .)) }}
+  {{- end }}
+  {{- $deploymentAnnotations := merge $reloaderAnnotation (.Values.server.deploymentAnnotations | default dict) }}
+  {{- if $deploymentAnnotations }}
   annotations:
-    configmap.reloader.stakater.com/reload: {{ include "opensandbox-server.fullname" . }}-config
+    {{- toYaml $deploymentAnnotations | nindent 4 }}
+  {{- end }}
 spec:
   replicas: {{ .Values.server.replicaCount }}
   selector:
