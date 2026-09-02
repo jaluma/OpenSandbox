@@ -270,6 +270,10 @@ export default defineConfig({
               text: "Release Verification",
               link: "/community/release-verification",
             },
+            {
+              text: "Jaluma Fork Releases",
+              link: "/community/jaluma-fork-releases",
+            },
           ],
         },
       ],

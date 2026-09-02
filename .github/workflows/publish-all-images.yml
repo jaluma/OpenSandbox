@@ -49,6 +49,10 @@ jobs:
             version: v0.1.1
             dockerfile: kubernetes/Dockerfile.image-committer
             context: kubernetes
+          - component: nodeagent
+            version: v0.1.0
+            dockerfile: components/nodeagent/Dockerfile
+            context: .
 
     steps:
       - name: Checkout code
@@ -114,12 +118,16 @@ jobs:
           sed -i "s|imageCommitterImage: .*|imageCommitterImage: \"${GHCR_REPO}/image-committer:v0.1.1\"|" "$CONTROLLER_VALUES"
 
           sed -i "s|repository: .*opensandbox/server|repository: ${GHCR_REPO}/server|" "$SERVER_VALUES"
-           sed -i "s|tag: \"v0\.2\.[0-9]*\"\( *\)$|tag: \"v0.2.3\"|" "$SERVER_VALUES"
+          sed -i "s|tag: \"v0\.2\.[0-9]*\"\( *\)$|tag: \"v0.2.3\"|" "$SERVER_VALUES"
           sed -i "s|repository: .*opensandbox/ingress|repository: ${GHCR_REPO}/ingress|" "$SERVER_VALUES"
           sed -i "s|tag: \"v1\.0\.[0-9]*\"\( *\)$|tag: \"v1.0.10\"|" "$SERVER_VALUES"
 
-           sed -i "s|execd_image = \".*opensandbox/execd:.*\"|execd_image = \"${GHCR_REPO}/execd:v1.1.0\"|" "$SERVER_VALUES"
-           sed -i "s|image = \".*opensandbox/egress:.*\"|image = \"${GHCR_REPO}/egress:v1.1.7\"|" "$SERVER_VALUES"
+          sed -i "s|execd_image = \".*opensandbox/execd:.*\"|execd_image = \"${GHCR_REPO}/execd:v1.1.0\"|" "$SERVER_VALUES"
+          sed -i "s|image = \".*opensandbox/egress:.*\"|image = \"${GHCR_REPO}/egress:v1.1.7\"|" "$SERVER_VALUES"
+
+          NODE_AGENT_VALUES="kubernetes/charts/opensandbox-node-agent/values.yaml"
+          sed -i "s|repository: .*opensandbox/nodeagent|repository: ${GHCR_REPO}/nodeagent|" "$NODE_AGENT_VALUES"
+          sed -i 's|tag: ".*"|tag: "v0.1.0"|' "$NODE_AGENT_VALUES"
 
       - name: Update chart dependencies
         run: helm dependency update kubernetes/charts/opensandbox
