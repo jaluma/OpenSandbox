@@ -14,7 +14,53 @@ entries:
       artifacthub.io/prerelease: "false"
     apiVersion: v2
     appVersion: 0.2.3
-    created: "2026-07-28T13:59:29.693582526Z"
+    created: "2026-09-02T09:16:11.912473685Z"
+    dependencies:
+    - name: opensandbox-controller
+      repository: file://../opensandbox-controller
+      version: 0.2.1
+    - name: opensandbox-server
+      repository: file://../opensandbox-server
+      version: 0.2.3
+    - condition: opensandbox-node-agent.enabled
+      name: opensandbox-node-agent
+      repository: file://../opensandbox-node-agent
+      version: 0.1.0
+    description: All-in-one Helm chart for deploying OpenSandbox controller and server
+    digest: 8b4dfcf75a35a3c04862899c6c01f35de790bbede23a04a238fc54f5fa5caa1a
+    home: https://github.com/opensandbox-group/OpenSandbox
+    keywords:
+    - sandbox
+    - kubernetes
+    - operator
+    - api
+    - lifecycle
+    - batchsandbox
+    kubeVersion: '>=1.21.1-0'
+    maintainers:
+    - email: opensandbox@example.com
+      name: OpenSandbox Team
+    name: opensandbox
+    sources:
+    - https://github.com/opensandbox-group/OpenSandbox/tree/main/kubernetes
+    type: application
+    urls:
+    - https://jaluma.github.io/OpenSandbox/helm/opensandbox-0.2.5.tgz
+    version: 0.2.5
+  - annotations:
+      artifacthub.io/category: integration-delivery
+      artifacthub.io/license: Apache-2.0
+      artifacthub.io/links: |
+        - name: Helm Repository
+          url: https://jaluma.github.io/OpenSandbox/helm
+        - name: Documentation
+          url: https://github.com/opensandbox-group/OpenSandbox/blob/main/kubernetes/README.md
+        - name: Support
+          url: https://github.com/opensandbox-group/OpenSandbox/issues
+      artifacthub.io/prerelease: "false"
+    apiVersion: v2
+    appVersion: 0.2.3
+    created: "2026-09-02T09:16:11.909538798Z"
     dependencies:
     - name: opensandbox-controller
       repository: file://../opensandbox-controller
@@ -56,7 +102,7 @@ entries:
       artifacthub.io/prerelease: "false"
     apiVersion: v2
     appVersion: 0.2.3
-    created: "2026-07-28T13:59:29.692137034Z"
+    created: "2026-09-02T09:16:11.908051768Z"
     dependencies:
     - name: opensandbox-controller
       repository: file://../opensandbox-controller
@@ -98,7 +144,7 @@ entries:
       artifacthub.io/prerelease: "false"
     apiVersion: v2
     appVersion: 0.2.2
-    created: "2026-07-28T13:59:29.689771395Z"
+    created: "2026-09-02T09:16:11.906673151Z"
     dependencies:
     - name: opensandbox-controller
       repository: file://../opensandbox-controller
@@ -140,7 +186,7 @@ entries:
       artifacthub.io/prerelease: "false"
     apiVersion: v2
     appVersion: 0.2.1
-    created: "2026-07-28T13:59:29.688360177Z"
+    created: "2026-09-02T09:16:11.905275298Z"
     dependencies:
     - name: opensandbox-controller
       repository: file://../opensandbox-controller
@@ -182,7 +228,7 @@ entries:
       artifacthub.io/prerelease: "false"
     apiVersion: v2
     appVersion: 0.2.0
-    created: "2026-07-28T13:59:29.687019993Z"
+    created: "2026-09-02T09:16:11.903745017Z"
     dependencies:
     - name: opensandbox-controller
       repository: file://../opensandbox-controller
@@ -211,4 +257,4 @@ entries:
     urls:
     - https://jaluma.github.io/OpenSandbox/helm/opensandbox-0.2.0.tgz
     version: 0.2.0
-generated: "2026-07-28T13:59:29.685428999Z"
+generated: "2026-09-02T09:16:11.900697081Z"
