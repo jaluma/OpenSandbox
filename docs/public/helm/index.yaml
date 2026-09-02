@@ -14,7 +14,7 @@ entries:
       artifacthub.io/prerelease: "false"
     apiVersion: v2
     appVersion: 0.2.3
-    created: "2026-07-28T12:06:56.641007261Z"
+    created: "2026-07-28T13:59:29.693582526Z"
     dependencies:
     - name: opensandbox-controller
       repository: file://../opensandbox-controller
@@ -23,7 +23,7 @@ entries:
       repository: file://../opensandbox-server
       version: 0.2.1
     description: All-in-one Helm chart for deploying OpenSandbox controller and server
-    digest: eec55727cf794d0e9265aeb73ac179e55a3973265b5ee98a02472ac794426976
+    digest: 124181bb02f8b897f183bd383add5ba25a1f0ff735c0046016d6f7fe7ad5d67e
     home: https://github.com/opensandbox-group/OpenSandbox
     keywords:
     - sandbox
@@ -56,7 +56,7 @@ entries:
       artifacthub.io/prerelease: "false"
     apiVersion: v2
     appVersion: 0.2.3
-    created: "2026-07-28T12:06:56.638694753Z"
+    created: "2026-07-28T13:59:29.692137034Z"
     dependencies:
     - name: opensandbox-controller
       repository: file://../opensandbox-controller
@@ -98,7 +98,7 @@ entries:
       artifacthub.io/prerelease: "false"
     apiVersion: v2
     appVersion: 0.2.2
-    created: "2026-07-28T12:06:56.637278208Z"
+    created: "2026-07-28T13:59:29.689771395Z"
     dependencies:
     - name: opensandbox-controller
       repository: file://../opensandbox-controller
@@ -140,7 +140,7 @@ entries:
       artifacthub.io/prerelease: "false"
     apiVersion: v2
     appVersion: 0.2.1
-    created: "2026-07-28T12:06:56.635861923Z"
+    created: "2026-07-28T13:59:29.688360177Z"
     dependencies:
     - name: opensandbox-controller
       repository: file://../opensandbox-controller
@@ -182,7 +182,7 @@ entries:
       artifacthub.io/prerelease: "false"
     apiVersion: v2
     appVersion: 0.2.0
-    created: "2026-07-28T12:06:56.634438758Z"
+    created: "2026-07-28T13:59:29.687019993Z"
     dependencies:
     - name: opensandbox-controller
       repository: file://../opensandbox-controller
@@ -211,4 +211,4 @@ entries:
     urls:
     - https://jaluma.github.io/OpenSandbox/helm/opensandbox-0.2.0.tgz
     version: 0.2.0
-generated: "2026-07-28T12:06:56.632749986Z"
+generated: "2026-07-28T13:59:29.685428999Z"
