@@ -153,6 +153,7 @@ class DockerSandboxService(DockerDiagnosticsMixin, DockerRuntimeMixin, DockerVol
         self._bootstrap_script_cache: Dict[str, bytes] = {}
         self._bwrap_archive_cache: Dict[str, bytes] = {}
         self._session_gate_archive_cache: Dict[str, bytes] = {}
+        self._launcher_archive_cache: Dict[str, bytes] = {}
         self._windows_profile_cache: Dict[str, bytes] = {}
         self._daemon_platform: Optional[PlatformSpec] = None
         self._metadata_store = DockerMetadataStore()
@@ -245,6 +246,17 @@ class DockerSandboxService(DockerDiagnosticsMixin, DockerRuntimeMixin, DockerVol
         """Helper to fetch the Docker container associated with a sandbox ID."""
         label_selector = f"{SANDBOX_ID_LABEL}={sandbox_id}"
         try:
+            try:
+                container = self.docker_client.containers.get(f"sandbox-{sandbox_id}")
+            except DockerNotFound:
+                container = None
+
+            if container is not None:
+                labels = container.attrs.get("Config", {}).get("Labels") or {}
+                if labels.get(SANDBOX_ID_LABEL) == sandbox_id:
+                    return container
+
+            # Preserve lookup for managed containers with a nonstandard name.
             containers = self.docker_client.containers.list(
                 all=True, filters={"label": label_selector}
             )
@@ -625,6 +637,14 @@ class DockerSandboxService(DockerDiagnosticsMixin, DockerRuntimeMixin, DockerVol
         Raises:
             HTTPException: If sandbox creation fails
         """
+        if request.lifecycle is not None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "code": SandboxErrorCodes.INVALID_PARAMETER,
+                    "message": "lifecycle hooks are not supported by the Docker provider.",
+                },
+            )
         if (request.extensions or {}).get("poolRef", "").strip():
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -633,7 +653,7 @@ class DockerSandboxService(DockerDiagnosticsMixin, DockerRuntimeMixin, DockerVol
                     "message": "poolRef is not supported by the Docker provider. Use Kubernetes BatchSandbox provider instead.",
                 },
             )
-        request = resolve_sandbox_image_from_request(request)
+        request = await resolve_sandbox_image_from_request(request)
         ensure_entrypoint(request.entrypoint or [])
         ensure_metadata_labels(request.metadata)
         ensure_platform_valid(request.platform)
@@ -857,8 +877,11 @@ class DockerSandboxService(DockerDiagnosticsMixin, DockerRuntimeMixin, DockerVol
                     volume_binds.append(
                         f"{runtime_volume_name}:{OPENSANDBOX_RUNTIME_MOUNT_PATH}:rw"
                     )
-            if volume_binds:
-                host_config_kwargs["binds"] = volume_binds
+            # Config-level binds (docker.sandbox_binds) apply to every sandbox
+            # and come first.
+            all_binds = list(self.app_config.docker.sandbox_binds or []) + (volume_binds or [])
+            if all_binds:
+                host_config_kwargs["binds"] = all_binds
             if requested_windows_profile:
                 host_config_kwargs = apply_windows_runtime_host_config_defaults(
                     host_config_kwargs,

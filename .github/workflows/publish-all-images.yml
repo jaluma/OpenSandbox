@@ -20,11 +20,11 @@ jobs:
       matrix:
         include:
           - component: server
-            version: v0.2.2
+            version: v0.2.3
             dockerfile: server/Dockerfile
             context: server
           - component: execd
-            version: v1.0.21
+            version: v1.1.0
             dockerfile: components/execd/Dockerfile
             context: .
           - component: ingress
@@ -32,7 +32,7 @@ jobs:
             dockerfile: components/ingress/Dockerfile
             context: .
           - component: egress
-            version: v1.1.5
+            version: v1.1.7
             dockerfile: components/egress/Dockerfile
             context: .
           - component: controller
@@ -114,12 +114,12 @@ jobs:
           sed -i "s|imageCommitterImage: .*|imageCommitterImage: \"${GHCR_REPO}/image-committer:v0.1.1\"|" "$CONTROLLER_VALUES"
 
           sed -i "s|repository: .*opensandbox/server|repository: ${GHCR_REPO}/server|" "$SERVER_VALUES"
-          sed -i "s|tag: \"v0\.2\.[0-9]*\"\( *\)$|tag: \"v0.2.2\"|" "$SERVER_VALUES"
+           sed -i "s|tag: \"v0\.2\.[0-9]*\"\( *\)$|tag: \"v0.2.3\"|" "$SERVER_VALUES"
           sed -i "s|repository: .*opensandbox/ingress|repository: ${GHCR_REPO}/ingress|" "$SERVER_VALUES"
           sed -i "s|tag: \"v1\.0\.[0-9]*\"\( *\)$|tag: \"v1.0.10\"|" "$SERVER_VALUES"
 
-          sed -i "s|execd_image = \".*opensandbox/execd:.*\"|execd_image = \"${GHCR_REPO}/execd:v1.0.21\"|" "$SERVER_VALUES"
-          sed -i "s|image = \".*opensandbox/egress:.*\"|image = \"${GHCR_REPO}/egress:v1.1.5\"|" "$SERVER_VALUES"
+           sed -i "s|execd_image = \".*opensandbox/execd:.*\"|execd_image = \"${GHCR_REPO}/execd:v1.1.0\"|" "$SERVER_VALUES"
+           sed -i "s|image = \".*opensandbox/egress:.*\"|image = \"${GHCR_REPO}/egress:v1.1.7\"|" "$SERVER_VALUES"
 
       - name: Update chart dependencies
         run: helm dependency update kubernetes/charts/opensandbox
