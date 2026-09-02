@@ -127,9 +127,22 @@ validate_release_identity() {
 
 refresh_release() {
   local status=0
-  release_json="$(get_release_json)" || status=$?
-  [[ "$status" -eq 0 ]] || die "Release '${RELEASE_TAG}' disappeared or could not be read"
-  validate_release_identity "$release_json"
+  local attempt
+
+  # GitHub can make a newly-created release briefly unavailable through the
+  # tag lookup endpoint. Retry only that transient 404 before failing.
+  for attempt in {1..10}; do
+    status=0
+    release_json="$(get_release_json)" || status=$?
+    if [[ "$status" -eq 0 ]]; then
+      validate_release_identity "$release_json"
+      return 0
+    fi
+    [[ "$status" -eq 4 ]] || break
+    sleep 2
+  done
+
+  die "Release '${RELEASE_TAG}' disappeared or could not be read"
 }
 
 release_is_draft() {
