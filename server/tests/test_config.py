@@ -159,6 +159,30 @@ def test_docker_runtime_disallows_kubernetes_block():
         AppConfig(server=server_cfg, runtime=runtime_cfg, kubernetes=kubernetes_cfg)
 
 
+def test_load_config_with_docker_extra_hosts(tmp_path, monkeypatch):
+    """[docker] extra_hosts should be parsed and exposed on DockerConfig."""
+    _reset_config(monkeypatch)
+    toml = textwrap.dedent(
+        """
+        [server]
+        host = "127.0.0.1"
+        port = 9000
+
+        [runtime]
+        type = "docker"
+        execd_image = "opensandbox/execd:test"
+
+        [docker]
+        extra_hosts = ["zylon.me:host-gateway"]
+        """
+    )
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(toml)
+
+    loaded = config_module.load_config(config_path)
+    assert loaded.docker.extra_hosts == ["zylon.me:host-gateway"]
+
+
 def test_server_config_defaults_include_max_sandbox_timeout():
     server_cfg = ServerConfig()
     assert server_cfg.max_sandbox_timeout_seconds is None

@@ -182,6 +182,55 @@ async def test_create_sandbox_applies_security_defaults(mock_docker):
 
 @pytest.mark.asyncio
 @patch("opensandbox_server.services.docker.docker_service.docker")
+async def test_create_sandbox_passes_extra_hosts(mock_docker):
+    mock_client = MagicMock()
+    mock_client.containers.list.return_value = []
+    mock_client.api.create_container.return_value = {"Id": "cid"}
+    mock_client.api.create_host_config.return_value = {
+        "extra_hosts": ["zylon.me:host-gateway"]
+    }
+    mock_client.containers.get.return_value = MagicMock()
+    mock_docker.from_env.return_value = mock_client
+
+    service = DockerSandboxService(
+        config=AppConfig(
+            server=ServerConfig(),
+            runtime=RuntimeConfig(
+                type="docker", execd_image="ghcr.io/opensandbox/platform:latest"
+            ),
+            ingress=IngressConfig(mode="direct"),
+            docker={"extra_hosts": ["zylon.me:host-gateway"]},
+        )
+    )
+    request = CreateSandboxRequest(
+        image=ImageSpec(uri="python:3.11"),
+        timeout=120,
+        resourceLimits=ResourceLimits(root={}),
+        env={},
+        metadata={},
+        entrypoint=["python"],
+    )
+
+    with (
+        patch.object(service, "_ensure_image_available"),
+        patch.object(service, "_prepare_sandbox_runtime"),
+        patch(
+            "opensandbox_server.services.docker.docker_service.allocate_port_bindings",
+            return_value={
+                "44772": ("0.0.0.0", 40001),
+                "8080": ("0.0.0.0", 40002),
+            },
+        ),
+    ):
+        await service.create_sandbox(request)
+
+    create_host_config_kwargs = mock_client.api.create_host_config.call_args.kwargs
+    assert create_host_config_kwargs.get("extra_hosts") == ["zylon.me:host-gateway"]
+    host_config = mock_client.api.create_container.call_args.kwargs["host_config"]
+    assert host_config.get("extra_hosts") == ["zylon.me:host-gateway"]
+
+@pytest.mark.asyncio
+@patch("opensandbox_server.services.docker.docker_service.docker")
 async def test_create_sandbox_passes_gpu_device_requests(mock_docker):
     mock_client = MagicMock()
     mock_client.containers.list.return_value = []

@@ -834,6 +834,14 @@ class DockerConfig(BaseModel):
             "Docker host IP or hostname for bridge-mode endpoint URLs when the server runs in a container."
         ),
     )
+    extra_hosts: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Additional hostname mappings injected into every sandbox container via "
+            "Docker's extra_hosts (e.g. ['zylon.me:host-gateway']). Useful when a "
+            "hostname should resolve to the Docker host instead of public DNS."
+        ),
+    )
     drop_capabilities: list[str] = Field(
         default_factory=lambda: [
             "AUDIT_WRITE",

@@ -19,6 +19,9 @@ configs:
 
       [docker]
       network_mode = "bridge"
+      # Optional: add /etc/hosts entries to every sandbox container.
+      # Use "host-gateway" to point a hostname at the Docker host.
+      # extra_hosts = ["zylon.me:host-gateway"]
       # When server runs in a container, set host_ip to the host's IP or hostname so bridge-mode endpoints are reachable (e.g. host.docker.internal or the host LAN IP).
       # It's required when server deployed with docker container under host.
       host_ip = "host.docker.internal"

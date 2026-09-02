@@ -49,6 +49,9 @@ path = "~/.opensandbox/opensandbox.db"
 
 [docker]
 network_mode = "bridge"
+# Optional: add /etc/hosts entries to every sandbox container.
+# Use "host-gateway" to point a hostname at the Docker host.
+# extra_hosts = ["zylon.me:host-gateway"]
 # Host port range for bridge-mode sandbox port allocation.
 # Each sandbox needs 2–3 host ports (2 without egress, 3 with egress sidecar).
 # Narrow the range to match your firewall policy — e.g., 100 concurrent sandboxes ≈ 300 ports.

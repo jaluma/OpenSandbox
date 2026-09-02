@@ -47,6 +47,9 @@ path = "~/.opensandbox/opensandbox.db"
 [docker]
 # Supported values for network_mode: "host", "bridge"
 network_mode = "bridge"
+# 可选：为每个沙箱容器注入 /etc/hosts 条目。
+# 使用 "host-gateway" 可将主机名指向 Docker 宿主机。
+# extra_hosts = ["zylon.me:host-gateway"]
 # Bridge 模式下沙箱端口映射的宿主机端口范围。
 # 每个沙箱需要 2–3 个宿主机端口（无 egress 需要 2 个，有 egress sidecar 需要 3 个）。
 # 可根据防火墙策略缩小范围 — 例如 100 个并发沙箱 ≈ 需要 300 个端口。

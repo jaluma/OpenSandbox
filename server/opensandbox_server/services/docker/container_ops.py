@@ -359,6 +359,8 @@ class DockerContainerOpsMixin:
             host_config_kwargs["cap_drop"] = docker_cfg.drop_capabilities
         if docker_cfg.pids_limit is not None:
             host_config_kwargs["pids_limit"] = docker_cfg.pids_limit
+        if docker_cfg.extra_hosts:
+            host_config_kwargs["extra_hosts"] = list(docker_cfg.extra_hosts)
         if mem_limit:
             host_config_kwargs["mem_limit"] = mem_limit
         if nano_cpus:
